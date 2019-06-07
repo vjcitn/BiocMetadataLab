@@ -1,0 +1,132 @@
+---
+title: "Metadata metrics for cancer corpus"
+author: "Vincent J. Carey, stvjc at channing.harvard.edu"
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+vignette: >
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteIndexEntry{Semantic metrics for cancer corpus}
+  %\VignetteEncoding{UTF-8}
+output:
+  BiocStyle::html_document:
+    highlight: pygments
+    number_sections: yes
+    theme: united
+    toc: yes
+---
+
+```{r setup,echo=FALSE}
+suppressPackageStartupMessages({
+library(ggplot2)
+library(plotly)
+library(metametrics)
+library(ssrch)
+})
+```
+
+# Basic observations on a corpus of human RNA-seq studies in cancer
+
+Using the Omicidx system, we harvested metadata about human samples
+for which RNA-seq data was deposited in NCBI SRA.
+
+We work with a subset of 1009 studies for which a cancer-related
+term was present in study title as recorded at NCBI SRA.
+
+```{r lk1}
+library(ggplot2)
+library(plotly)
+library(metametrics)
+library(lubridate)
+ds_ca = DocSet_ca1009()
+ds_ca
+```
+
+We accumulate (over dates of study submissions)
+the set of fields used in the sample annotation of the 1009 cancer studies.
+```{r lk2,cache=TRUE,echo=FALSE}
+studs1009 = ls(docs2kw(ds_ca))  # in cancer corpus
+stud_dates = stud_dates_ca1009
+stud_dates = sort(stud_dates)
+ofields = lapply(names(stud_dates), 
+    function(x) names(retrieve_doc(x, ds_ca)))
+freqs = table(unlist(ofields))
+#sort(freqs,decreasing=TRUE)[1:20]
+cumfields = ofields
+for (i in 2:length(cumfields)) cumfields[[i]] = 
+    union(cumfields[[i]], cumfields[[i-1]])
+csiz = sapply(cumfields,length)
+bag_fields_ca1009 = unique(unlist(cumfields))
+nfields = length(bag_fields_ca1009)
+mydf = data.frame(date_published=stud_dates, nfields=csiz)
+```
+
+The growth in size of the set of fields in use over time is displayed here:
+
+```{r lk3}
+ggplot(mydf, aes(x=date_published, y=nfields)) + geom_point()
+```
+
+```{r lkdi,echo=FALSE}
+library(plotly)
+ddf = data.frame(date=stud_dates[-1], newly_introduced_fields=diff(csiz),
+    study=paste0(names(stud_dates[-1]), "\na"))
+```
+
+The next display is interactive -- hover over points to see study
+accession number and newly introduced field names.
+
+```{r ddd,echo=FALSE,fig.width=6}
+incrs = lapply(2:length(cumfields), function(x) setdiff(cumfields[[x]],
+   cumfields[[x-1]]))
+incrs = unlist(lapply(incrs, function(x) paste0(x, collapse="\n")))
+sn = names(stud_dates[-1])
+incrs = paste(sn, incrs, sep="\n")
+dddf = cbind(ddf, incrs)
+g2 = ggplot(dddf, aes(x=date, y=newly_introduced_fields, text=incrs)) + geom_point()
+ggplotly(g2)
+```
+
+# Reference resources for reducing metadata isolation and variability
+
+Use of common data elements is promoted by various initiatives.
+Dictionaries, thesauri, and ontologies are all relevant.  We have
+examples of each in the metametrics package.
+
+A snapshot of the Genomic Data Commons gdcdictionary, with fields
+and values related to diagnosis and sample characteristics is
+provided in `gdc_dx_sam`.
+```{r lkref}
+gdc_dx_sam
+```
+
+A table with all entries from several ontologies and the NCI Thesaurus
+is provided by `load_ontolookup`:
+```{r lkr2}
+olook = load_ontolookup()
+olook
+```
+
+## Statistics on field use
+
+### Rate of growth of vocabulary of attribute fields
+
+We use robust linear modeling to estimate growth in
+vocabulary of fields employed over time.  The data.frame
+`mydf` includes a variable `nfields` taking a value
+for each study publication date.  The value of `nfields` associated
+with date $d$ records the
+the number of fields used to annotate all studies up
+to date $d$.
+
+```{r lknf}
+library(MASS)
+nsecpy = 3600*24*365
+summary( mm <- rlm(nfields~I(as.numeric(date_published)/nsecpy), data=mydf))
+plot(nfields~I(as.numeric(date_published)/nsecpy), data=mydf)
+abline(mm)
+```
+
+### Isolation of field names
+
+
+
+# Proximity of terms in use to endorsed terminologies
